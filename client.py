@@ -25,7 +25,7 @@ logging.basicConfig(
 )
 
 # URL сервера
-SERVER_URL = "http://main-nike.gl.at.ply.gg:54943"
+SERVER_URL = "your_playit_url"
 if getattr(sys, 'frozen', False):
     DOWNLOAD_DIR = os.path.join(os.path.dirname(sys.executable), "tempfiles")
 else:
