@@ -28,7 +28,7 @@ logging.basicConfig(
 )
 
 # URL сервера
-SERVER_URL = "http://main-nike.gl.at.ply.gg:54943"  # Замените на ваш playit.gg URL
+SERVER_URL = "playit_url"  # Замените на ваш playit.gg URL
 if getattr(sys, 'frozen', False):
     DOWNLOAD_DIR = os.path.join(os.path.dirname(sys.executable), "tempfiles")
 else:
