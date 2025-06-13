@@ -1,8 +1,6 @@
 from flask import Flask, jsonify, render_template_string, request
 import base64
-from pyngrok import ngrok
-import threading
-from datetime import datetime, timedelta
+from datetime import datetime
 
 app = Flask(__name__)
 active_clients = {}  # {client_id: {"name": client_name, "last_seen": timestamp, "file_to_download": {"filename": str, "content": str}}}
@@ -10,17 +8,20 @@ active_clients = {}  # {client_id: {"name": client_name, "last_seen": timestamp,
 # Регистрация клиента
 @app.route("/api/register", methods=["POST"])
 def register_client():
-    data = request.json
-    client_id = data.get("client_id")
-    client_name = data.get("client_name")
-    if client_id and client_name:
-        active_clients[client_id] = {
-            "name": client_name,
-            "last_seen": datetime.now(),
-            "file_to_download": None
-        }
-        return jsonify({"status": "registered"})
-    return jsonify({"error": "Invalid data"}), 400
+    try:
+        data = request.get_json()
+        client_id = data.get("client_id")
+        client_name = data.get("client_name")
+        if client_id and client_name:
+            active_clients[client_id] = {
+                "name": client_name,
+                "last_seen": datetime.now(),
+                "file_to_download": None
+            }
+            return jsonify({"status": "registered"}), 200
+        return jsonify({"error": "Missing client_id or client_name"}), 400
+    except Exception as e:
+        return jsonify({"error": f"Server error: {str(e)}"}), 500
 
 # Проверка статуса клиента и получение файла
 @app.route("/api/check/<client_id>", methods=["GET"])
@@ -28,7 +29,6 @@ def check_client(client_id):
     if client_id in active_clients:
         active_clients[client_id]["last_seen"] = datetime.now()
         file_to_download = active_clients[client_id].get("file_to_download")
-        # Очищаем задание после получения
         active_clients[client_id]["file_to_download"] = None
         return jsonify({"file": file_to_download})
     return jsonify({"error": "Client not found"}), 404
@@ -36,11 +36,6 @@ def check_client(client_id):
 # Получить список активных клиентов
 @app.route("/api/clients", methods=["GET"])
 def get_clients():
-    # Удаляем клиентов, неактивных более 30 секунд
-    now = datetime.now()
-    expired = [cid for cid, info in active_clients.items() if now - info["last_seen"] > timedelta(seconds=30)]
-    for cid in expired:
-        active_clients.pop(cid)
     clients = [{"id": cid, "name": info["name"]} for cid, info in active_clients.items()]
     return jsonify(clients)
 
@@ -57,7 +52,6 @@ def upload_file():
         return jsonify({"error": "No file selected"}), 400
     if file:
         filename = file.filename
-        # Читаем файл и кодируем в base64
         file_content = file.read()
         file_b64 = base64.b64encode(file_content).decode('utf-8')
         active_clients[client_id]["file_to_download"] = {
@@ -100,9 +94,8 @@ def index():
             const uploadInput = document.getElementById('file-upload');
             const sendBtn = document.getElementById('send');
 
-            // Загрузка списка клиентов
             function loadClients() {
-                const currentClient = clientSelect.value; // Сохраняем текущий выбор
+                const currentClient = clientSelect.value;
                 fetch('/api/clients')
                     .then(res => res.json())
                     .then(clients => {
@@ -113,7 +106,6 @@ def index():
                             option.textContent = client.name;
                             clientSelect.appendChild(option);
                         });
-                        // Восстанавливаем выбор, если клиент все еще в списке
                         if (currentClient && clients.some(c => c.id === currentClient)) {
                             clientSelect.value = currentClient;
                         }
@@ -121,9 +113,8 @@ def index():
                     });
             }
             loadClients();
-            setInterval(loadClients, 5000); // Обновляем каждые 5 секунд
+            setInterval(loadClients, 5000);
 
-            // Активация кнопки
             clientSelect.addEventListener('change', () => {
                 sendBtn.disabled = !clientSelect.value || !uploadInput.files[0];
             });
@@ -131,7 +122,6 @@ def index():
                 sendBtn.disabled = !clientSelect.value || !uploadInput.files[0];
             });
 
-            // Отправка файла
             sendBtn.addEventListener('click', () => {
                 const clientId = clientSelect.value;
                 const file = uploadInput.files[0];
@@ -150,7 +140,7 @@ def index():
                     .then(data => {
                         if (data.status === 'assigned') {
                             alert(`File "${data.filename}" assigned to client!`);
-                            uploadInput.value = ''; // Очищаем поле загрузки
+                            uploadInput.value = '';
                             sendBtn.disabled = true;
                         } else {
                             alert('Error: ' + data.error);
@@ -162,10 +152,8 @@ def index():
     </html>
     """)
 
-def start_ngrok():
-    public_url = ngrok.connect(5000)
-    print(f"Public URL: {public_url}")
-
 if __name__ == "__main__":
-    threading.Thread(target=start_ngrok, daemon=True).start()
+    print("Starting Flask server on port 5000...")
+    print("Please run the playit.gg agent and create a TCP tunnel for port 5000.")
+    print("Use the playit.gg tunnel address (e.g., http://main-nike.gl.at.ply.gg:54943) in client.py as SERVER_URL.")
     app.run(port=5000)
